@@ -1,0 +1,66 @@
+import json
+from fastapi import FastAPI, UploadFile, File, HTTPException, Response
+from bs4 import BeautifulSoup
+
+app = FastAPI()
+
+# In-memory storage. Uses normalized, spaceless course codes as keys (e.g., "COSC3506")
+courses_db = {}
+
+@app.post("/api/v1/admin/catalog/import")
+async def import_catalog(file: UploadFile = File(...)):
+    contents = await file.read()
+    
+    soup = BeautifulSoup(contents, 'html.parser')
+    table = soup.find('table')
+    
+    if not table:
+        raise HTTPException(status_code=400, detail="No table found in the uploaded HTML.")
+        
+    tbody = table.find('tbody')
+    rows = tbody.find_all('tr') if tbody else table.find_all('tr')[1:]
+    
+    extracted_count = 0
+    for row in rows:
+        cols = row.find_all('td')
+        if len(cols) >= 5:
+            # Extract the raw course code preserving the space (e.g., "COSC 3506")
+            original_code = cols[0].get_text(strip=True)
+            
+            # Create a uniform key for database lookups (e.g., "COSC3506")
+            lookup_key = original_code.replace(" ", "").upper()
+            
+            # Cast credits to an integer to satisfy JSON schema rules
+            try:
+                credits_int = int(cols[2].get_text(strip=True))
+            except ValueError:
+                credits_int = 0  # Fallback in case of dirty data
+            
+            # Store using the exact five keys requested. Any extra columns are ignored.
+            courses_db[lookup_key] = {
+                "course_code": original_code,
+                "title": cols[1].get_text(strip=True),
+                "credits": credits_int,
+                "prerequisites": cols[3].get_text(strip=True),
+                "cross_listed": cols[4].get_text(strip=True)
+            }
+            extracted_count += 1
+            
+    return {"message": f"Successfully imported {extracted_count} courses."}
+
+
+@app.get("/api/v1/catalog/courses/{course_code}")
+def get_course(course_code: str):
+    # FastAPI auto-decodes %20 in URLs to a space.
+    # By stripping spaces from the request, "COSC3506" and "COSC 3506" both resolve to "COSC3506"
+    lookup_key = course_code.replace(" ", "").upper()
+    
+    course = courses_db.get(lookup_key)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+        
+    # Force the HTTP response to be beautifully indented JSON for your curl command
+    return Response(
+        content=json.dumps(course, indent=2), 
+        media_type="application/json"
+    )

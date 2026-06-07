@@ -1,0 +1,10 @@
+from fastapi import FastAPI
+
+app = FastAPI()
+@app.get("/")
+#decorating the function home with the app.get decorator - pass in the path
+# / root
+def home():
+    #returns a dictionary with a single message
+    #FastAPI should automatically convert this to JSON for us
+    return {"message": "Hello oooordww"}
