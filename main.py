@@ -1,4 +1,6 @@
+import os
 import json
+import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from bs4 import BeautifulSoup
 
@@ -64,3 +66,11 @@ def get_course(course_code: str):
         content=json.dumps(course, indent=2), 
         media_type="application/json"
     )
+
+# --- NEW: Dynamic Port Binding ---
+if __name__ == "__main__":
+    # Fetch the PORT environment variable. If it isn't set, default to 8000.
+    port = int(os.environ.get("PORT", 8000))
+    
+    # Run the server programmatically
+    uvicorn.run(app, host="0.0.0.0", port=port)
